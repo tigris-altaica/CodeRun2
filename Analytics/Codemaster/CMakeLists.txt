@@ -1,0 +1,1 @@
+add_executable(Codemaster Codemaster.cpp)
