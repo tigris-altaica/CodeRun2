@@ -1,7 +1,7 @@
 #include <iostream>
 #include <concepts>
 #include <vector>
-#include <unordered_set>
+#include <set>
 #include <array>
 
 using namespace std;
@@ -68,8 +68,12 @@ namespace {
             return *this *= rhs_mod;
         }
 
-        value_type getValue() const {
-            return value;
+        bool operator < (const Modular& rhs) const {
+            return value < rhs.value;
+        }
+
+        bool operator > (const Modular& rhs) const {
+            return value > rhs.value;
         }
 
         template <value_type M>
@@ -139,15 +143,6 @@ namespace {
         return temp;
     }
 }
-namespace std {
-    template<value_type M>
-    struct hash<Modular<M>> {
-        size_t operator()(const Modular<M> &m) const {
-            return hash<value_type>{}(m.getValue());
-        }
-    };
-}
-
 
 using Zmod = Modular<1'000'000'000 + 7>;
 
@@ -167,31 +162,43 @@ vector<Zmod> powersOfP;
 class SubstitutionHash {
 public:
     explicit SubstitutionHash(string_view sv) {
+        for (size_t i = 0; i < alphabetSize; ++i) {
+            index[i] = symbolHashes.emplace();
+        }
+
         for (auto pit = powersOfP.begin(); auto ch : sv) {
-            symbolHashes[val(ch)] += *pit;
+            auto node = symbolHashes.extract(index[val(ch)]);
+            node.value() += *pit;
+            index[val(ch)] = symbolHashes.insert(std::move(node));
             ++pit;
         }
     }
-    
+
     void del(char ch) {
-        symbolHashes[val(ch)] -= powersOfP.front();
+        auto node = symbolHashes.extract(index[val(ch)]);
+        node.value() -= powersOfP.front();
+        index[val(ch)] = symbolHashes.insert(std::move(node));
     }
-    
+
     void shift() {
         for (size_t i = 0; i < alphabetSize; ++i) {
-            symbolHashes[i] *= p;
+            if (*(index[i]) == 0) {
+                continue;
+            }
+            auto node = symbolHashes.extract(index[i]);
+            node.value() *= p;
+            index[i] = symbolHashes.insert(std::move(node));
         }
     }
-    
+
     void add(char ch) {
-        symbolHashes[val(ch)] += powersOfP.back();
+        auto node = symbolHashes.extract(index[val(ch)]);
+        node.value() += powersOfP.back();
+        index[val(ch)] = symbolHashes.insert(std::move(node));
     }
 
     bool operator == (const SubstitutionHash& rhs) const {
-        auto& arr1 = symbolHashes;
-        auto& arr2 = rhs.symbolHashes;
-
-        return unordered_set(arr1.begin(), arr1.end()) == unordered_set(arr2.begin(), arr2.end());
+        return symbolHashes == rhs.symbolHashes;
     }
 
 private:
@@ -201,7 +208,8 @@ private:
 
     static constexpr size_t alphabetSize = 94;
 
-    array<Zmod, alphabetSize> symbolHashes{};
+    multiset<Zmod, greater<Zmod>> symbolHashes;
+    array<multiset<Zmod, greater<Zmod>>::iterator, alphabetSize> index;
 };
 
 int main() {
@@ -211,7 +219,7 @@ int main() {
     powersOfP = computePowers(p, pattern.size());
 
     const auto patternHash = SubstitutionHash(pattern);
-    
+
     auto substrHash = SubstitutionHash(string_view(str).substr(0, pattern.size() - 1));
     vector<size_t> startIdxs;
 
